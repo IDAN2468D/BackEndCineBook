@@ -37,7 +37,7 @@ export const register = async (req: Request, res: Response) => {
         const token = jwt.sign({ userId: user._id.toString() }, JWT_SECRET, { expiresIn: '7d' });
         console.log('[DEBUG] Token signed successfully');
 
-        res.status(201).json({ token, user: { id: user._id, name, email } });
+        res.status(201).json({ token, user: { id: user._id, name, email, profileImage: user.profileImage } });
     } catch (error: any) {
         console.error('!!! SERVER REGISTRATION ERROR !!!');
         console.error('Error Message:', error.message);
@@ -65,7 +65,7 @@ export const login = async (req: Request, res: Response) => {
         // Trigger Login Alert Email (Non-blocking)
         sendLoginAlert(user.email, user.name);
 
-        res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+        res.json({ token, user: { id: user._id, name: user.name, email: user.email, profileImage: user.profileImage } });
     } catch (error: any) {
         res.status(500).json({ message: error.message });
     }
@@ -99,8 +99,14 @@ export const googleLogin = async (req: Request, res: Response) => {
                 name,
                 email,
                 password: hashedPassword,
+                profileImage: picture,
                 // googleId: googleId // Uncomment if schema has this field
             });
+            await user.save();
+        }
+
+        if (user && picture && user.profileImage !== picture) {
+            user.profileImage = picture;
             await user.save();
         }
 
@@ -109,9 +115,30 @@ export const googleLogin = async (req: Request, res: Response) => {
         // Trigger Login Alert Email (Non-blocking)
         sendLoginAlert(user.email, user.name);
 
-        res.json({ token: jwtToken, user: { id: user._id, name: user.name, email: user.email } });
+        res.json({ token: jwtToken, user: { id: user._id, name: user.name, email: user.email, profileImage: user.profileImage } });
     } catch (error: any) {
         console.error('Google Login Error:', error.message);
         res.status(500).json({ message: 'Google Login Failed', error: error.message });
+    }
+};
+
+export const regenerateToken = async (req: Request, res: Response) => {
+    try {
+        const { email } = req.body;
+        if (!email) {
+            return res.status(400).json({ message: 'Email is required' });
+        }
+
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const token = jwt.sign({ userId: user._id.toString() }, JWT_SECRET, { expiresIn: '7d' });
+
+        res.json({ token, user: { id: user._id, name: user.name, email: user.email, profileImage: user.profileImage } });
+    } catch (error: any) {
+        console.error('Regenerate Token Error:', error.message);
+        res.status(500).json({ message: 'Failed to regenerate token' });
     }
 };

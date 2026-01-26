@@ -4,7 +4,7 @@ dotenv.config();
 import cors from 'cors';
 import express from 'express';
 import mongoose from 'mongoose';
-import { googleLogin, login, register } from './src/controllers/authController';
+import { googleLogin, login, regenerateToken, register } from './src/controllers/authController';
 import { authMiddleware } from './src/middleware/authMiddleware';
 import { Showtime } from './src/models/Showtime';
 
@@ -43,6 +43,7 @@ mongoose.connect(MONGO_URI)
 app.post('/api/auth/register', register);
 app.post('/api/auth/login', login);
 app.post('/api/auth/google', googleLogin);
+app.post('/api/auth/regenerate-token', regenerateToken);
 
 app.get('/api/movies', async (req, res) => {
     try {
