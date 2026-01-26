@@ -376,6 +376,44 @@ app.post('/api/bookings', authMiddleware, async (req: any, res) => {
     }
 });
 
+// NEW: Delete Booking Route
+app.delete('/api/bookings/:id', authMiddleware, async (req: any, res) => {
+    try {
+        const bookingId = req.params.id; // This is the SEAT _id
+        const userId = req.user;
+
+        // Find the showtime that contains this seat
+        const showtime = await Showtime.findOne({
+            'seats._id': bookingId
+        });
+
+        if (!showtime) {
+            return res.status(404).json({ message: 'Booking not found' });
+        }
+
+        // Find the specific seat subdocument
+        const seat = showtime.seats.find((s: any) => s._id.toString() === bookingId);
+
+        // Verify ownership
+        if (!seat || seat.userId?.toString() !== userId.toString()) {
+            return res.status(403).json({ message: 'Not authorized to delete this booking' });
+        }
+
+        // Reset seat
+        seat.status = 'available';
+        seat.userId = null;
+
+        await showtime.save();
+
+        console.log(`[BOOKING] Cancelled seat ${seat.label} (ID: ${bookingId})`);
+        res.json({ message: 'Booking cancelled successfully' });
+
+    } catch (error: any) {
+        console.error('Cancel Booking Error:', error);
+        res.status(500).json({ message: 'Error cancelling booking' });
+    }
+});
+
 
 // ... imports ...
 
@@ -403,7 +441,8 @@ app.get('/api/ticket-history', authMiddleware, async (req: any, res) => {
                 tmdbId: show.tmdbId,
                 startTime: show.startTime,
                 hallName: show.hall?.name || 'Unknown Hall',
-                seats: userSeats.map((s: any) => s.label)
+                seats: userSeats.map((s: any) => s.label),
+                bookingIds: userSeats.map((s: any) => s._id) // Add IDs for deletion
             };
         });
 
