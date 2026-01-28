@@ -541,7 +541,7 @@ app.post('/api/ai-search', async (req, res) => {
         // 2. Init Gemini
         const { GoogleGenerativeAI } = require("@google/generative-ai");
         const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
         // 3. Construct Prompt
         const prompt = `
@@ -580,11 +580,16 @@ app.post('/api/ai-search', async (req, res) => {
     }
 });
 
+
 // --- AI ROUTES ---
-import { analyzeReview, predictCrowd } from './src/controllers/aiController';
+import { analyzeReview, chatWithCineBot, planDateNight, predictCrowd, summarizeReviews } from './src/controllers/aiController';
 
 app.get('/api/ai/predict-crowd/:tmdbId', predictCrowd);
 app.post('/api/reviews/analyze', analyzeReview);
+app.get('/api/ai/summarize-reviews/:tmdbId', summarizeReviews);
+app.post('/api/ai/chat', chatWithCineBot);
+app.post('/api/ai/date-night', planDateNight);
+
 
 // --- SOCIAL & WALLET ROUTES ---
 import { generateWalletPass, getShareLink } from './src/controllers/walletController';
