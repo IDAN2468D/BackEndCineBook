@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Request, Response } from 'express';
 import { Showtime } from '../models/Showtime';
+import { cacheService } from '../services/cacheService';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -112,10 +113,13 @@ export const summarizeReviews = async (req: Request, res: Response) => {
         const { tmdbId } = req.params;
 
         // 1. Fetch Reviews from TMDB
-        const tmdbResponse = await axios.get(
-            `https://api.themoviedb.org/3/movie/${tmdbId}/reviews?api_key=${TMDB_API_KEY}&language=en-US&page=1`
-        );
-        const reviews = tmdbResponse.data.results;
+        // 1. Fetch Reviews from TMDB (Cached)
+        const reviews = await cacheService.getOrFetch(`reviews_${tmdbId}`, async () => {
+            const tmdbResponse = await axios.get(
+                `https://api.themoviedb.org/3/movie/${tmdbId}/reviews?api_key=${TMDB_API_KEY}&language=en-US&page=1`
+            );
+            return tmdbResponse.data.results;
+        });
 
         if (!reviews || reviews.length === 0) {
             return res.json({ summary: "No reviews available yet to summarize." });

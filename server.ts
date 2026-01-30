@@ -11,6 +11,7 @@ import { Showtime } from './src/models/Showtime';
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { initSocket } from './src/sockets/socketHandler';
+import { cacheService } from './src/services/cacheService';
 
 const app = express();
 const server = http.createServer(app);
@@ -47,10 +48,13 @@ app.post('/api/auth/regenerate-token', regenerateToken);
 
 app.get('/api/movies', async (req, res) => {
     try {
-        const response = await axios.get(
-            `https://api.themoviedb.org/3/movie/now_playing?api_key=${TMDB_API_KEY}&language=en-US&page=1`
-        );
-        res.json(response.data.results);
+        const movies = await cacheService.getOrFetch('movies_now_playing', async () => {
+            const response = await axios.get(
+                `https://api.themoviedb.org/3/movie/now_playing?api_key=${TMDB_API_KEY}&language=en-US&page=1`
+            );
+            return response.data.results;
+        });
+        res.json(movies);
     } catch (error: any) {
         console.error('TMDB Fetch Error:', error.message);
         res.status(500).json({ message: 'Error fetching movies from TMDB' });
@@ -59,10 +63,13 @@ app.get('/api/movies', async (req, res) => {
 
 app.get('/api/movies/upcoming', async (req, res) => {
     try {
-        const response = await axios.get(
-            `https://api.themoviedb.org/3/movie/upcoming?api_key=${TMDB_API_KEY}&language=en-US&page=1`
-        );
-        res.json(response.data.results);
+        const movies = await cacheService.getOrFetch('movies_upcoming', async () => {
+            const response = await axios.get(
+                `https://api.themoviedb.org/3/movie/upcoming?api_key=${TMDB_API_KEY}&language=en-US&page=1`
+            );
+            return response.data.results;
+        });
+        res.json(movies);
     } catch (error: any) {
         console.error('TMDB Upcoming Error:', error.message);
         res.status(500).json({ message: 'Error fetching upcoming movies' });
@@ -71,10 +78,13 @@ app.get('/api/movies/upcoming', async (req, res) => {
 
 app.get('/api/movies/trending', async (req, res) => {
     try {
-        const response = await axios.get(
-            `https://api.themoviedb.org/3/trending/movie/week?api_key=${TMDB_API_KEY}`
-        );
-        res.json(response.data.results);
+        const movies = await cacheService.getOrFetch('movies_trending_week', async () => {
+            const response = await axios.get(
+                `https://api.themoviedb.org/3/trending/movie/week?api_key=${TMDB_API_KEY}`
+            );
+            return response.data.results;
+        });
+        res.json(movies);
     } catch (error: any) {
         console.error('TMDB Trending Error:', error.message);
         res.status(500).json({ message: 'Error fetching trending movies' });
@@ -84,20 +94,25 @@ app.get('/api/movies/trending', async (req, res) => {
 app.get('/api/movie/:tmdbId', async (req, res) => {
     try {
         const { tmdbId } = req.params;
+        const cacheKey = `movie_details_${tmdbId}`;
 
-        // Fetch movie details, videos, and credits in parallel
-        const [detailsRes, videosRes, creditsRes] = await Promise.all([
-            axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=en-US`),
-            axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}/videos?api_key=${TMDB_API_KEY}&language=en-US`),
-            axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}/credits?api_key=${TMDB_API_KEY}`)
-        ]);
+        const movieData = await cacheService.getOrFetch(cacheKey, async () => {
+            // Fetch movie details, videos, and credits in parallel
+            const [detailsRes, videosRes, creditsRes] = await Promise.all([
+                axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=en-US`),
+                axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}/videos?api_key=${TMDB_API_KEY}&language=en-US`),
+                axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}/credits?api_key=${TMDB_API_KEY}`)
+            ]);
 
-        res.json({
-            ...detailsRes.data,
-            videos: videosRes.data.results,
-            cast: creditsRes.data.cast.slice(0, 10),
-            crew: creditsRes.data.crew.slice(0, 5)
+            return {
+                ...detailsRes.data,
+                videos: videosRes.data.results,
+                cast: creditsRes.data.cast.slice(0, 10),
+                crew: creditsRes.data.crew.slice(0, 5)
+            };
         });
+
+        res.json(movieData);
     } catch (error: any) {
         console.error('TMDB Movie Details Error:', error.message);
         res.status(500).json({ message: 'Error fetching movie details' });
@@ -107,10 +122,16 @@ app.get('/api/movie/:tmdbId', async (req, res) => {
 app.get('/api/search/:query', async (req, res) => {
     try {
         const { query } = req.params;
-        const response = await axios.get(
-            `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=en-US&query=${encodeURIComponent(query)}&page=1`
-        );
-        res.json(response.data.results);
+        const cacheKey = `search_movie_${query.toLowerCase()}`;
+
+        const results = await cacheService.getOrFetch(cacheKey, async () => {
+            const response = await axios.get(
+                `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&language=en-US&query=${encodeURIComponent(query)}&page=1`
+            );
+            return response.data.results;
+        }, 1800); // 30 min cache for search results
+
+        res.json(results);
     } catch (error: any) {
         console.error('TMDB Search Error:', error.message);
         res.status(500).json({ message: 'Error searching movies' });
@@ -122,10 +143,13 @@ app.get('/api/search/:query', async (req, res) => {
 // 1. More Movie Lists
 app.get('/api/movies/top-rated', async (req, res) => {
     try {
-        const response = await axios.get(
-            `https://api.themoviedb.org/3/movie/top_rated?api_key=${TMDB_API_KEY}&language=en-US&page=1`
-        );
-        res.json(response.data.results);
+        const movies = await cacheService.getOrFetch('movies_top_rated', async () => {
+            const response = await axios.get(
+                `https://api.themoviedb.org/3/movie/top_rated?api_key=${TMDB_API_KEY}&language=en-US&page=1`
+            );
+            return response.data.results;
+        });
+        res.json(movies);
     } catch (error: any) {
         console.error('TMDB Top Rated Error:', error.message);
         res.status(500).json({ message: 'Error fetching top rated movies' });
@@ -134,10 +158,13 @@ app.get('/api/movies/top-rated', async (req, res) => {
 
 app.get('/api/movies/popular', async (req, res) => {
     try {
-        const response = await axios.get(
-            `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`
-        );
-        res.json(response.data.results);
+        const movies = await cacheService.getOrFetch('movies_popular', async () => {
+            const response = await axios.get(
+                `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`
+            );
+            return response.data.results;
+        });
+        res.json(movies);
     } catch (error: any) {
         console.error('TMDB Popular Movies Error:', error.message);
         res.status(500).json({ message: 'Error fetching popular movies' });
@@ -147,10 +174,13 @@ app.get('/api/movies/popular', async (req, res) => {
 // 2. TV Shows Support
 app.get('/api/tv/popular', async (req, res) => {
     try {
-        const response = await axios.get(
-            `https://api.themoviedb.org/3/tv/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`
-        );
-        res.json(response.data.results);
+        const shows = await cacheService.getOrFetch('tv_popular', async () => {
+            const response = await axios.get(
+                `https://api.themoviedb.org/3/tv/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`
+            );
+            return response.data.results;
+        });
+        res.json(shows);
     } catch (error: any) {
         console.error('TMDB TV Popular Error:', error.message);
         res.status(500).json({ message: 'Error fetching popular TV shows' });
@@ -159,10 +189,13 @@ app.get('/api/tv/popular', async (req, res) => {
 
 app.get('/api/tv/top-rated', async (req, res) => {
     try {
-        const response = await axios.get(
-            `https://api.themoviedb.org/3/tv/top_rated?api_key=${TMDB_API_KEY}&language=en-US&page=1`
-        );
-        res.json(response.data.results);
+        const shows = await cacheService.getOrFetch('tv_top_rated', async () => {
+            const response = await axios.get(
+                `https://api.themoviedb.org/3/tv/top_rated?api_key=${TMDB_API_KEY}&language=en-US&page=1`
+            );
+            return response.data.results;
+        });
+        res.json(shows);
     } catch (error: any) {
         console.error('TMDB TV Top Rated Error:', error.message);
         res.status(500).json({ message: 'Error fetching top rated TV shows' });
@@ -171,10 +204,13 @@ app.get('/api/tv/top-rated', async (req, res) => {
 
 app.get('/api/tv/on-the-air', async (req, res) => {
     try {
-        const response = await axios.get(
-            `https://api.themoviedb.org/3/tv/on_the_air?api_key=${TMDB_API_KEY}&language=en-US&page=1`
-        );
-        res.json(response.data.results);
+        const shows = await cacheService.getOrFetch('tv_on_the_air', async () => {
+            const response = await axios.get(
+                `https://api.themoviedb.org/3/tv/on_the_air?api_key=${TMDB_API_KEY}&language=en-US&page=1`
+            );
+            return response.data.results;
+        });
+        res.json(shows);
     } catch (error: any) {
         console.error('TMDB TV On The Air Error:', error.message);
         res.status(500).json({ message: 'Error fetching on-the-air TV shows' });
@@ -184,17 +220,23 @@ app.get('/api/tv/on-the-air', async (req, res) => {
 app.get('/api/tv/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const [details, credits, videos] = await Promise.all([
-            axios.get(`https://api.themoviedb.org/3/tv/${id}?api_key=${TMDB_API_KEY}&language=en-US`),
-            axios.get(`https://api.themoviedb.org/3/tv/${id}/credits?api_key=${TMDB_API_KEY}&language=en-US`),
-            axios.get(`https://api.themoviedb.org/3/tv/${id}/videos?api_key=${TMDB_API_KEY}&language=en-US`)
-        ]);
+        const cacheKey = `tv_details_${id}`;
 
-        res.json({
-            ...details.data,
-            cast: credits.data.cast.slice(0, 10),
-            videos: videos.data.results
+        const showData = await cacheService.getOrFetch(cacheKey, async () => {
+            const [details, credits, videos] = await Promise.all([
+                axios.get(`https://api.themoviedb.org/3/tv/${id}?api_key=${TMDB_API_KEY}&language=en-US`),
+                axios.get(`https://api.themoviedb.org/3/tv/${id}/credits?api_key=${TMDB_API_KEY}&language=en-US`),
+                axios.get(`https://api.themoviedb.org/3/tv/${id}/videos?api_key=${TMDB_API_KEY}&language=en-US`)
+            ]);
+
+            return {
+                ...details.data,
+                cast: credits.data.cast.slice(0, 10),
+                videos: videos.data.results
+            };
         });
+
+        res.json(showData);
     } catch (error: any) {
         console.error('TMDB TV Details Error:', error.message);
         res.status(500).json({ message: 'Error fetching TV show details' });
@@ -204,10 +246,13 @@ app.get('/api/tv/:id', async (req, res) => {
 // 3. People (Actors/Directors)
 app.get('/api/people/popular', async (req, res) => {
     try {
-        const response = await axios.get(
-            `https://api.themoviedb.org/3/person/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`
-        );
-        res.json(response.data.results);
+        const people = await cacheService.getOrFetch('people_popular', async () => {
+            const response = await axios.get(
+                `https://api.themoviedb.org/3/person/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`
+            );
+            return response.data.results;
+        });
+        res.json(people);
     } catch (error: any) {
         console.error('TMDB Popular People Error:', error.message);
         res.status(500).json({ message: 'Error fetching popular people' });
@@ -217,15 +262,21 @@ app.get('/api/people/popular', async (req, res) => {
 app.get('/api/person/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const [details, combinedCredits] = await Promise.all([
-            axios.get(`https://api.themoviedb.org/3/person/${id}?api_key=${TMDB_API_KEY}&language=en-US`),
-            axios.get(`https://api.themoviedb.org/3/person/${id}/combined_credits?api_key=${TMDB_API_KEY}&language=en-US`)
-        ]);
+        const cacheKey = `person_details_${id}`;
 
-        res.json({
-            ...details.data,
-            credits: combinedCredits.data
+        const personData = await cacheService.getOrFetch(cacheKey, async () => {
+            const [details, combinedCredits] = await Promise.all([
+                axios.get(`https://api.themoviedb.org/3/person/${id}?api_key=${TMDB_API_KEY}&language=en-US`),
+                axios.get(`https://api.themoviedb.org/3/person/${id}/combined_credits?api_key=${TMDB_API_KEY}&language=en-US`)
+            ]);
+
+            return {
+                ...details.data,
+                credits: combinedCredits.data
+            };
         });
+
+        res.json(personData);
     } catch (error: any) {
         console.error('TMDB Person Details Error:', error.message);
         res.status(500).json({ message: 'Error fetching person details' });
@@ -235,10 +286,13 @@ app.get('/api/person/:id', async (req, res) => {
 // 4. Genres
 app.get('/api/genres/movies', async (req, res) => {
     try {
-        const response = await axios.get(
-            `https://api.themoviedb.org/3/genre/movie/list?api_key=${TMDB_API_KEY}&language=en-US`
-        );
-        res.json(response.data.genres);
+        const genres = await cacheService.getOrFetch('genres_movie', async () => {
+            const response = await axios.get(
+                `https://api.themoviedb.org/3/genre/movie/list?api_key=${TMDB_API_KEY}&language=en-US`
+            );
+            return response.data.genres;
+        });
+        res.json(genres);
     } catch (error: any) {
         console.error('TMDB Movie Genres Error:', error.message);
         res.status(500).json({ message: 'Error fetching movie genres' });
@@ -247,10 +301,13 @@ app.get('/api/genres/movies', async (req, res) => {
 
 app.get('/api/genres/tv', async (req, res) => {
     try {
-        const response = await axios.get(
-            `https://api.themoviedb.org/3/genre/tv/list?api_key=${TMDB_API_KEY}&language=en-US`
-        );
-        res.json(response.data.genres);
+        const genres = await cacheService.getOrFetch('genres_tv', async () => {
+            const response = await axios.get(
+                `https://api.themoviedb.org/3/genre/tv/list?api_key=${TMDB_API_KEY}&language=en-US`
+            );
+            return response.data.genres;
+        });
+        res.json(genres);
     } catch (error: any) {
         console.error('TMDB TV Genres Error:', error.message);
         res.status(500).json({ message: 'Error fetching TV genres' });
