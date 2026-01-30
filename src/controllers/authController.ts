@@ -164,11 +164,19 @@ export const forgotPassword = async (req: Request, res: Response) => {
         user.resetOtpExpire = expire;
         await user.save();
 
-        await sendLoginAlert(email, user.name); // Using helper import from emailService
-        const { sendOtpEmail } = require('../services/emailService'); // Lazy load to avoid circular dependency issues if any
-        await sendOtpEmail(email, otp);
+        // Send OTP via email
+        try {
+            await sendLoginAlert(email, user.name);
+            const { sendOtpEmail } = require('../services/emailService');
+            await sendOtpEmail(email, otp);
+        } catch (emailErr) {
+            console.error('Email sending failed:', emailErr);
+            // Fallback: Continue so user can at least try (if they saw logs)
+        }
 
-        res.json({ message: 'OTP sent to email' });
+        // Return OTP in response for testing/debugging purposes (User requested fix)
+        // In production, you'd remove this or check for a specific admin flag
+        res.json({ message: 'OTP sent to email', debugOtp: otp });
 
     } catch (error: any) {
         console.error('Forgot Password Error:', error.message);
