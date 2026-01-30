@@ -6,6 +6,8 @@ const userSchema = new Schema({
     password: { type: String, required: true },
     watchlist: [{ type: Number }], // TMDB Movie IDs
     profileImage: { type: String }, // URL from Google or uploaded
+    resetOtp: { type: String },
+    resetOtpExpire: { type: Date },
 }, { timestamps: true });
 
 export const User = mongoose.models.User || mongoose.model('User', userSchema);

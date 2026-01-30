@@ -142,3 +142,99 @@ export const regenerateToken = async (req: Request, res: Response) => {
         res.status(500).json({ message: 'Failed to regenerate token' });
     }
 };
+
+export const forgotPassword = async (req: Request, res: Response) => {
+    try {
+        const { email } = req.body;
+        console.log('[DEBUG] Forgot password requested for:', email);
+
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Generate 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Set expiry to 10 minutes from now
+        const expire = new Date();
+        expire.setMinutes(expire.getMinutes() + 10);
+
+        user.resetOtp = otp;
+        user.resetOtpExpire = expire;
+        await user.save();
+
+        await sendLoginAlert(email, user.name); // Using helper import from emailService
+        const { sendOtpEmail } = require('../services/emailService'); // Lazy load to avoid circular dependency issues if any
+        await sendOtpEmail(email, otp);
+
+        res.json({ message: 'OTP sent to email' });
+
+    } catch (error: any) {
+        console.error('Forgot Password Error:', error.message);
+        res.status(500).json({ message: 'Error processing request' });
+    }
+};
+
+export const resetPassword = async (req: Request, res: Response) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+
+        const user = await User.findOne({
+            email,
+            resetOtp: otp,
+            resetOtpExpire: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid or expired OTP' });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+        user.password = hashedPassword;
+        user.resetOtp = undefined;
+        user.resetOtpExpire = undefined;
+        await user.save();
+
+        res.json({ message: 'Password reset successfully' });
+
+    } catch (error: any) {
+        console.error('Reset Password Error:', error.message);
+        res.status(500).json({ message: 'Error resetting password' });
+    }
+};
+
+export const updateProfile = async (req: any, res: Response) => {
+    try {
+        const userId = req.user; // From authMiddleware
+        const { name, phone } = req.body; // Phone is not in schema yet, but Name is.
+
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        if (name) user.name = name;
+        // if (phone) user.phone = phone; // Add phone to schema if needed
+
+        await user.save();
+
+        res.json({ message: 'Profile updated successfully', user });
+    } catch (error: any) {
+        console.error('Update Profile Error:', error.message);
+        res.status(500).json({ message: 'Error updating profile' });
+    }
+};
+
+export const deleteAccount = async (req: any, res: Response) => {
+    try {
+        const userId = req.user;
+        const deletedUser = await User.findByIdAndDelete(userId);
+
+        if (!deletedUser) return res.status(404).json({ message: 'User not found' });
+
+        res.json({ message: 'Account deleted successfully' });
+    } catch (error: any) {
+        console.error('Delete Account Error:', error.message);
+        res.status(500).json({ message: 'Error deleting account' });
+    }
+};

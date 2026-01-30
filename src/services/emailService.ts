@@ -147,3 +147,38 @@ export const sendBookingConfirmation = async (userEmail: string, order: OrderDet
         console.error('Failed to send booking confirmation:', error);
     }
 };
+
+/**
+ * Sends an OTP email for password reset.
+ */
+export const sendOtpEmail = async (userEmail: string, otp: string) => {
+    try {
+        const mailOptions = {
+            from: `"CineBook Security" <${process.env.EMAIL_USER}>`,
+            to: userEmail,
+            subject: 'Password Reset OTP | CineBook',
+            html: `
+                <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+                    <h2 style="color: #3b82f6; text-align: center;">Reset Your Password</h2>
+                    <p>You requested a password reset. Use the OTP below to proceed:</p>
+                    <div style="background-color: #f1f5f9; padding: 20px; border-radius: 8px; text-align: center; font-size: 24px; letter-spacing: 5px; font-weight: bold; color: #0f172a; margin: 20px 0;">
+                        ${otp}
+                    </div>
+                    <p>This code expires in 10 minutes.</p>
+                    <p>If you did not request this, please ignore this email.</p>
+                </div>
+            `
+        };
+
+        if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
+            await transporter.sendMail(mailOptions);
+            console.log(`OTP sent to ${userEmail}`);
+        } else {
+            console.warn('Email credentials missing. Skipping email.');
+            console.log(`[DEV MODE] OTP for ${userEmail}: ${otp}`);
+        }
+
+    } catch (error) {
+        console.error('Failed to send OTP:', error);
+    }
+};

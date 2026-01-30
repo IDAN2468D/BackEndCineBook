@@ -10,8 +10,8 @@ import { Showtime } from './src/models/Showtime';
 
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { initSocket } from './src/sockets/socketHandler';
 import { cacheService } from './src/services/cacheService';
+import { initSocket } from './src/sockets/socketHandler';
 
 const app = express();
 const server = http.createServer(app);
@@ -45,6 +45,10 @@ app.post('/api/auth/register', register);
 app.post('/api/auth/login', login);
 app.post('/api/auth/google', googleLogin);
 app.post('/api/auth/regenerate-token', regenerateToken);
+app.post('/api/auth/forgot-password', require('./src/controllers/authController').forgotPassword);
+app.post('/api/auth/reset-password', require('./src/controllers/authController').resetPassword);
+app.put('/api/users/profile', authMiddleware, require('./src/controllers/authController').updateProfile);
+app.delete('/api/users/account', authMiddleware, require('./src/controllers/authController').deleteAccount);
 
 app.get('/api/movies', async (req, res) => {
     try {
